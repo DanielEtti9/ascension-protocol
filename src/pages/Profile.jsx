@@ -1,5 +1,4 @@
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
 
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -13,20 +12,9 @@ function Layout({ children }) {
 
   return (
     <div style={container}>
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={location.pathname}
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -20 }}
-          transition={{ duration: 0.3 }}
-          style={content}
-        >
-          {children}
-        </motion.div>
-      </AnimatePresence>
+      <div style={content}>{children}</div>
 
-      {/* 🔥 TAB BAR */}
+      {/* TAB BAR */}
       <div style={tabBar}>
         <Tab icon="🏠" active={location.pathname === "/dashboard"} onClick={() => navigate("/dashboard")} />
         <Tab icon="💬" active={location.pathname === "/chat"} onClick={() => navigate("/chat")} />
@@ -52,7 +40,7 @@ function Tab({ icon, active, onClick }) {
   );
 }
 
-export default function App() {
+function App() {
   return (
     <BrowserRouter>
       <Routes>
@@ -67,15 +55,17 @@ export default function App() {
   );
 }
 
-/* 🎨 GLOBAL STYLES */
+export default App;
+
+/* STYLES */
 
 const container = {
   minHeight: "100vh",
-  background: "radial-gradient(circle at top, #1e293b, #020617)",
+  background: "radial-gradient(circle,#0f172a,#020617)",
 };
 
 const content = {
-  paddingBottom: "90px",
+  paddingBottom: "80px",
 };
 
 const tabBar = {
@@ -84,14 +74,13 @@ const tabBar = {
   left: "50%",
   transform: "translateX(-50%)",
   width: "90%",
-  maxWidth: "420px",
+  maxWidth: "400px",
   display: "flex",
   justifyContent: "space-around",
-  padding: "14px",
-  borderRadius: "25px",
+  padding: "12px",
+  borderRadius: "20px",
   backdropFilter: "blur(20px)",
   background: "rgba(255,255,255,0.08)",
-  boxShadow: "0 0 30px rgba(0,0,0,0.5)",
 };
 
 const tabBtn = {
