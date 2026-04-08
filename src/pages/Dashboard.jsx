@@ -4,7 +4,7 @@ import { signOut, onAuthStateChanged } from "firebase/auth";
 import {
   doc,
   setDoc,
-  getDoc,
+  onSnapshot,
   collection,
   query,
   where,
@@ -24,7 +24,7 @@ export default function Dashboard() {
   const [friendEmail, setFriendEmail] = useState("");
   const [friends, setFriends] = useState([]);
 
-  // ✅ AUTH (FIXES BLACK SCREEN)
+  // ✅ AUTH
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
@@ -33,66 +33,50 @@ export default function Dashboard() {
     return () => unsub();
   }, []);
 
-  // ✅ LOAD USER DATA
+  // ✅ REAL-TIME USER DATA
   useEffect(() => {
     if (!user) return;
 
-    const load = async () => {
-      try {
-        const ref = doc(db, "users", user.uid);
-        const snap = await getDoc(ref);
+    const ref = doc(db, "users", user.uid);
 
-        if (snap.exists()) {
-          setDays(snap.data().days || []);
-        } else {
-          const empty = Array.from({ length: 30 }, () => ({
-            study: false,
-            prayer: false,
-            worship: false,
-          }));
-          setDays(empty);
-        }
-      } catch (err) {
-        console.log("LOAD ERROR:", err);
+    const unsub = onSnapshot(ref, (snap) => {
+      if (snap.exists()) {
+        setDays(snap.data().days || []);
+        setStreak(snap.data().streak || 0);
+      } else {
+        const empty = Array.from({ length: 30 }, () => ({
+          study: false,
+          prayer: false,
+          worship: false,
+        }));
+        setDays(empty);
       }
-    };
+    });
 
-    load();
+    return () => unsub();
   }, [user]);
 
-  // ✅ STREAK CALCULATION
+  // ✅ CALCULATE + SAVE STREAK
   useEffect(() => {
+    if (!user) return;
+
     let count = 0;
     days.forEach((d) => {
       if (d.study && d.prayer && d.worship) count++;
     });
-    setStreak(count);
+
+    setDoc(
+      doc(db, "users", user.uid),
+      {
+        email: user.email,
+        days,
+        streak: count,
+      },
+      { merge: true }
+    );
   }, [days]);
 
-  // ✅ SAVE DATA
-  useEffect(() => {
-    if (!user) return;
-
-    const save = async () => {
-      try {
-        await setDoc(
-          doc(db, "users", user.uid),
-          {
-            email: user.email,
-            days,
-            streak,
-          },
-          { merge: true }
-        );
-      } catch (err) {
-        console.log("SAVE ERROR:", err);
-      }
-    };
-
-    save();
-  }, [days, streak]);
-
-  // ✅ TOGGLE DAY
+  // ✅ TOGGLE DAY (INSTANT)
   const toggle = (type) => {
     if (selectedDay === null) return;
 
@@ -101,70 +85,62 @@ export default function Dashboard() {
     setDays(updated);
   };
 
-  // ✅ ADD FRIEND (EMAIL BASED)
+  // ✅ ADD FRIEND
   const addFriend = async () => {
     if (!friendEmail) return;
 
-    try {
-      const q = query(
-        collection(db, "users"),
-        where("email", "==", friendEmail)
-      );
+    const q = query(
+      collection(db, "users"),
+      where("email", "==", friendEmail)
+    );
 
-      const snap = await getDocs(q);
+    const snap = await getDocs(q);
 
-      if (snap.empty) {
-        alert("User not found");
-        return;
-      }
-
-      const friendId = snap.docs[0].id;
-
-      await updateDoc(doc(db, "users", user.uid), {
-        friends: arrayUnion(friendId),
-      });
-
-      alert("Friend added!");
-      setFriendEmail("");
-      loadFriends(); // refresh
-    } catch (err) {
-      console.log("ADD FRIEND ERROR:", err);
+    if (snap.empty) {
+      alert("User not found");
+      return;
     }
+
+    const friendId = snap.docs[0].id;
+
+    await updateDoc(doc(db, "users", user.uid), {
+      friends: arrayUnion(friendId),
+    });
+
+    setFriendEmail("");
   };
 
-  // ✅ LOAD FRIENDS
-  const loadFriends = async () => {
+  // ✅ REAL-TIME FRIENDS
+  useEffect(() => {
     if (!user) return;
 
-    try {
-      const snap = await getDoc(doc(db, "users", user.uid));
+    const ref = doc(db, "users", user.uid);
+
+    const unsub = onSnapshot(ref, async (snap) => {
       const ids = snap.data()?.friends || [];
 
       let list = [];
 
       for (let id of ids) {
-        const f = await getDoc(doc(db, "users", id));
-        if (f.exists()) list.push({ id, ...f.data() });
+        const unsubFriend = onSnapshot(doc(db, "users", id), (f) => {
+          if (f.exists()) {
+            setFriends((prev) => {
+              const filtered = prev.filter((x) => x.id !== id);
+              return [...filtered, { id, ...f.data() }];
+            });
+          }
+        });
       }
+    });
 
-      setFriends(list);
-    } catch (err) {
-      console.log("FRIENDS ERROR:", err);
-    }
-  };
-
-  useEffect(() => {
-    if (user) loadFriends();
+    return () => unsub();
   }, [user]);
 
-  // ✅ SAFETY (NO MORE BLACK SCREEN)
-  if (loading) {
+  if (loading)
     return <p style={{ color: "white", textAlign: "center" }}>Loading...</p>;
-  }
 
-  if (!user) {
+  if (!user)
     return <p style={{ color: "white", textAlign: "center" }}>Not logged in</p>;
-  }
 
   return (
     <div style={container}>
@@ -172,7 +148,7 @@ export default function Dashboard() {
         <h2>Ascension</h2>
         <p style={{ opacity: 0.6 }}>{user.email}</p>
 
-        {/* DAYS GRID */}
+        {/* GRID */}
         <div style={grid}>
           {days.map((d, i) => {
             const total =
@@ -248,7 +224,7 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* FRIEND LIST */}
+        {/* FRIENDS */}
         <div style={box}>
           <h4>Friends</h4>
 
@@ -278,7 +254,6 @@ export default function Dashboard() {
           AI Coach 🤖
         </button>
 
-        {/* LOGOUT */}
         <button style={logout} onClick={() => signOut(auth)}>
           Logout
         </button>
@@ -288,7 +263,6 @@ export default function Dashboard() {
 }
 
 /* STYLES */
-
 const container = {
   minHeight: "100vh",
   display: "flex",
