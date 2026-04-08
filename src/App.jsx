@@ -1,20 +1,17 @@
-<div style={box}>
-  <h4>Friends</h4>
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 
-  {friends.length === 0 ? (
-    <p>No friends yet</p>
-  ) : (
-    friends.map((f, i) => (
-      <div key={i}>
-        <p>{f.email} — 🔥 {f.streak || 0}</p>
+import Login from "./pages/Login";
+import Dashboard from "./pages/Dashboard";
 
-        <button
-          style={btn("#22c55e")}
-          onClick={() => (window.location.href = "/chat/" + f.id)}
-        >
-          Message 💬
-        </button>
-      </div>
-    ))
-  )}
-</div>
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Login />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+
+export default App;
