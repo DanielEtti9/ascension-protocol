@@ -5,8 +5,6 @@ import {
   doc,
   setDoc,
   getDoc,
-  updateDoc,
-  arrayUnion,
   collection,
   getDocs,
 } from "firebase/firestore";
@@ -16,33 +14,28 @@ const verse = "Be still, and know that I am God.";
 const quests = [
   "Read the Word today 📖",
   "Pray for someone 🙏",
-  "Spend time in worship 🙌",
-  "Encourage someone today ❤️",
-  "Meditate on Scripture 🧠",
-  "Fast or sacrifice something today 🔥",
-  "Share the Word with someone ✝️",
+  "Worship deeply today 🙌",
+  "Encourage someone ❤️",
+  "Share the Gospel ✝️",
+  "Reflect in silence 🧠",
+  "Intercede for others 🔥",
 ];
 
 export default function Dashboard() {
-  const today = new Date();
-  const todayIndex = today.getDate() - 1;
-  const todayQuest = quests[today.getDay()];
-
   const [user, setUser] = useState(null);
   const [days, setDays] = useState([]);
   const [selectedDay, setSelectedDay] = useState(null);
 
   const [stats, setStats] = useState({
     streak: 0,
-    longest: 0,
     study: 0,
     prayer: 0,
     worship: 0,
   });
 
-  const [friendId, setFriendId] = useState("");
-  const [friends, setFriends] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
+
+  const todayQuest = quests[new Date().getDay()];
 
   // AUTH
   useEffect(() => {
@@ -50,7 +43,7 @@ export default function Dashboard() {
     return () => unsub();
   }, []);
 
-  // LOAD USER DATA
+  // LOAD DATA
   useEffect(() => {
     if (!user) return;
 
@@ -59,8 +52,7 @@ export default function Dashboard() {
       const snap = await getDoc(ref);
 
       if (snap.exists()) {
-        const data = snap.data();
-        setDays(data.days || []);
+        setDays(snap.data().days || []);
       } else {
         const empty = Array.from({ length: 30 }, () => ({
           study: false,
@@ -77,34 +69,28 @@ export default function Dashboard() {
   // CALCULATE STATS
   useEffect(() => {
     let streak = 0;
-    let longest = 0;
-    let current = 0;
+    let study = 0,
+      prayer = 0,
+      worship = 0;
 
-    let study = 0;
-    let prayer = 0;
-    let worship = 0;
-
-    days.forEach((d, i) => {
+    days.forEach((d) => {
       if (d.study) study++;
       if (d.prayer) prayer++;
       if (d.worship) worship++;
 
-      if (d.study && d.prayer && d.worship) {
-        current++;
-        if (i <= todayIndex) streak = current;
-      } else {
-        current = 0;
-      }
-
-      if (current > longest) longest = current;
+      if (d.study && d.prayer && d.worship) streak++;
     });
 
-    setStats({ streak, longest, study, prayer, worship });
+    const newStats = { streak, study, prayer, worship };
+    setStats(newStats);
+
+    // SAVE FOR AI
+    localStorage.setItem("stats", JSON.stringify(newStats));
   }, [days]);
 
-  // SAVE USER DATA
+  // SAVE TO FIRESTORE
   useEffect(() => {
-    if (!user || days.length === 0) return;
+    if (!user) return;
 
     const ref = doc(db, "users", user.uid);
 
@@ -114,52 +100,10 @@ export default function Dashboard() {
         email: user.email,
         days,
         streak: stats.streak,
-        longestStreak: stats.longest,
-        totalStudy: stats.study,
-        totalPrayer: stats.prayer,
-        totalWorship: stats.worship,
       },
       { merge: true }
     );
   }, [days, stats]);
-
-  // ADD FRIEND
-  const addFriend = async () => {
-    if (!friendId) return;
-
-    const ref = doc(db, "users", user.uid);
-
-    await updateDoc(ref, {
-      friends: arrayUnion(friendId),
-    });
-
-    setFriendId("");
-    alert("Friend added!");
-  };
-
-  // LOAD FRIENDS
-  useEffect(() => {
-    if (!user) return;
-
-    const loadFriends = async () => {
-      const ref = doc(db, "users", user.uid);
-      const snap = await getDoc(ref);
-
-      if (!snap.exists()) return;
-
-      const ids = snap.data().friends || [];
-      let list = [];
-
-      for (let id of ids) {
-        const fSnap = await getDoc(doc(db, "users", id));
-        if (fSnap.exists()) list.push(fSnap.data());
-      }
-
-      setFriends(list);
-    };
-
-    loadFriends();
-  }, [user, days]);
 
   // LEADERBOARD
   useEffect(() => {
@@ -167,23 +111,16 @@ export default function Dashboard() {
       const snap = await getDocs(collection(db, "users"));
 
       let list = [];
+      snap.forEach((doc) => list.push(doc.data()));
 
-      snap.forEach((doc) => {
-        const data = doc.data();
-        list.push({
-          email: data.email,
-          streak: data.streak || 0,
-        });
-      });
-
-      list.sort((a, b) => b.streak - a.streak);
+      list.sort((a, b) => (b.streak || 0) - (a.streak || 0));
       setLeaderboard(list.slice(0, 5));
     };
 
     loadLeaderboard();
   }, [days]);
 
-  // TOGGLE DAY
+  // TOGGLE
   const toggle = (type) => {
     if (selectedDay === null) return;
 
@@ -192,6 +129,7 @@ export default function Dashboard() {
     setDays(updated);
   };
 
+  // LOGOUT
   const handleLogout = async () => {
     await signOut(auth);
     window.location.href = "/";
@@ -203,26 +141,24 @@ export default function Dashboard() {
     <div style={container}>
       <div style={card}>
         {/* HEADER */}
-        <h2>Ascension</h2>
+        <h1 style={{ fontSize: "28px" }}>Ascension</h1>
         <p style={{ opacity: 0.6 }}>{user.email}</p>
 
         {/* VERSE */}
-        <div style={verseBox}>"{verse}"</div>
+        <div style={glass}>
+          <p>"{verse}"</p>
+        </div>
 
-        {/* DAILY QUEST */}
-        <div style={questBox}>
-          <h4>🔥 Daily Quest</h4>
-          <p>{todayQuest}</p>
+        {/* QUEST */}
+        <div style={quest}>
+          🔥 {todayQuest}
         </div>
 
         {/* AI INSIGHT */}
-        <div style={aiBox}>
-          <h4>🤖 AI Insight</h4>
-          <p>
-            {stats.streak >= 5
-              ? "🔥 You're walking in discipline. Stay consistent."
-              : "Stay aligned. Keep building consistency."}
-          </p>
+        <div style={ai}>
+          🤖 {stats.streak >= 5
+            ? "You're walking in discipline. Stay consistent."
+            : "Stay aligned. Keep building consistency."}
         </div>
 
         {/* GRID */}
@@ -247,9 +183,12 @@ export default function Dashboard() {
                 key={i}
                 onClick={() => setSelectedDay(i)}
                 style={{
-                  ...dayBox,
+                  ...day,
                   background: bg,
-                  transform: selectedDay === i ? "scale(1.1)" : "scale(1)",
+                  boxShadow:
+                    selectedDay === i
+                      ? "0 0 15px rgba(34,197,94,0.8)"
+                      : "none",
                 }}
               >
                 {i + 1}
@@ -259,25 +198,23 @@ export default function Dashboard() {
         </div>
 
         {/* STREAK */}
-        <div style={streakBox}>
+        <div style={streak}>
           🔥 {stats.streak} Day Streak
         </div>
 
-        {/* STATS */}
-        <div style={statsBox}>
+        {/* COUNTS */}
+        <div style={counts}>
           📖 {stats.study} | 🙏 {stats.prayer} | 🙌 {stats.worship}
         </div>
 
-        {/* UPDATE DAY */}
-        <div style={updateBox}>
+        {/* UPDATE */}
+        <div style={glass}>
           <h4>Update Day</h4>
 
           {selectedDay !== null ? (
             <>
-              <p>Day {selectedDay + 1}</p>
-
               <button style={btn("#3b82f6")} onClick={() => toggle("study")}>
-                📖 Study
+                📖 Word
               </button>
 
               <button style={btn("#a855f7")} onClick={() => toggle("prayer")}>
@@ -293,58 +230,27 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* CHAT NAV */}
-        <button
-          style={btn("#2563eb")}
-          onClick={() => (window.location.href = "/chat")}
-        >
+        {/* NAV */}
+        <button style={btn("#2563eb")} onClick={() => (window.location.href = "/chat")}>
           Open Chat 💬
         </button>
 
-        {/* ADD FRIEND */}
-        <div style={sectionBox}>
-          <h4>Add Friend</h4>
-
-          <input
-            placeholder="Enter Friend UID"
-            value={friendId}
-            onChange={(e) => setFriendId(e.target.value)}
-            style={input}
-          />
-
-          <button style={btn("#3b82f6")} onClick={addFriend}>
-            Add Friend
-          </button>
-        </div>
-
-        {/* FRIENDS */}
-        <div style={sectionBox}>
-          <h4>Friends</h4>
-
-          {friends.length === 0 ? (
-            <p>No friends yet</p>
-          ) : (
-            friends.map((f, i) => (
-              <p key={i}>
-                {f.email} — 🔥 {f.streak || 0}
-              </p>
-            ))
-          )}
-        </div>
+        <button style={btn("#22c55e")} onClick={() => (window.location.href = "/ai")}>
+          Open AI Coach 🤖
+        </button>
 
         {/* LEADERBOARD */}
-        <div style={sectionBox}>
+        <div style={glass}>
           <h4>🏆 Leaderboard</h4>
-
           {leaderboard.map((p, i) => (
             <p key={i}>
-              {i + 1}. {p.email} — 🔥 {p.streak}
+              {i + 1}. {p.email} 🔥 {p.streak || 0}
             </p>
           ))}
         </div>
 
         {/* LOGOUT */}
-        <button style={logoutBtn} onClick={handleLogout}>
+        <button style={logout} onClick={handleLogout}>
           Logout
         </button>
       </div>
@@ -359,7 +265,7 @@ const container = {
   display: "flex",
   justifyContent: "center",
   alignItems: "center",
-  background: "radial-gradient(circle,#0f172a,#020617)",
+  background: "radial-gradient(circle at top, #0f172a, #020617)",
 };
 
 const card = {
@@ -367,40 +273,43 @@ const card = {
   maxWidth: "420px",
   padding: "25px",
   borderRadius: "20px",
-  background: "#020617",
+  backdropFilter: "blur(20px)",
+  background: "rgba(255,255,255,0.05)",
   color: "white",
   textAlign: "center",
 };
 
-const verseBox = {
-  padding: "10px",
-  background: "#1e293b",
-  borderRadius: "10px",
-  marginBottom: "10px",
+const glass = {
+  marginTop: "10px",
+  padding: "12px",
+  borderRadius: "12px",
+  background: "rgba(255,255,255,0.05)",
 };
 
-const questBox = {
-  padding: "10px",
+const quest = {
+  marginTop: "10px",
+  padding: "12px",
+  borderRadius: "12px",
   background: "#facc15",
   color: "black",
-  borderRadius: "10px",
-  marginBottom: "10px",
+  fontWeight: "bold",
 };
 
-const aiBox = {
-  padding: "10px",
+const ai = {
+  marginTop: "10px",
+  padding: "12px",
+  borderRadius: "12px",
   background: "#22c55e",
-  borderRadius: "10px",
-  marginBottom: "10px",
 };
 
 const grid = {
+  marginTop: "15px",
   display: "grid",
   gridTemplateColumns: "repeat(7,1fr)",
   gap: "8px",
 };
 
-const dayBox = {
+const day = {
   height: "45px",
   borderRadius: "10px",
   display: "flex",
@@ -409,46 +318,29 @@ const dayBox = {
   cursor: "pointer",
 };
 
-const streakBox = {
-  marginTop: "10px",
-  padding: "10px",
-  background: "#22c55e",
-  borderRadius: "10px",
-};
-
-const statsBox = {
-  marginTop: "10px",
-};
-
-const updateBox = {
-  marginTop: "10px",
-};
-
-const sectionBox = {
+const streak = {
   marginTop: "15px",
-  padding: "10px",
-  background: "#1e293b",
-  borderRadius: "10px",
+  padding: "12px",
+  borderRadius: "12px",
+  background: "#22c55e",
+  fontWeight: "bold",
 };
 
-const input = {
-  width: "100%",
-  padding: "8px",
-  marginBottom: "8px",
-  borderRadius: "8px",
+const counts = {
+  marginTop: "10px",
 };
 
 const btn = (color) => ({
   width: "100%",
   padding: "10px",
-  marginTop: "5px",
-  borderRadius: "8px",
+  marginTop: "8px",
+  borderRadius: "10px",
   border: "none",
   background: color,
   color: "white",
 });
 
-const logoutBtn = {
+const logout = {
   marginTop: "15px",
   padding: "10px",
   width: "100%",

@@ -1,84 +1,116 @@
 import { useState, useEffect } from "react";
-import { getAIResponse } from "../services/ai";
+import { auth } from "../services/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 
 export default function AI() {
+  const [user, setUser] = useState(null);
   const [input, setInput] = useState("");
   const [response, setResponse] = useState("");
-  const [days, setDays] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const [stats, setStats] = useState({
+    streak: 0,
+    study: 0,
+    prayer: 0,
+    worship: 0,
+  });
 
   useEffect(() => {
-    const saved = localStorage.getItem("days");
-    if (saved) {
-      setDays(JSON.parse(saved));
-    }
+    onAuthStateChanged(auth, (u) => {
+      setUser(u);
+
+      if (u) {
+        const saved = localStorage.getItem("stats");
+        if (saved) setStats(JSON.parse(saved));
+      }
+    });
   }, []);
 
-const generateSummary = (days) => {
-  const total = days.length;
+  const askAI = async () => {
+    setLoading(true);
 
-  const study = days.filter((d) => d.study).length;
-  const prayer = days.filter((d) => d.prayer).length;
-  const focus = days.filter((d) => d.focus).length;
+    const res = await fetch("/api/ai", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        message: input,
+        stats,
+      }),
+    });
 
-  // Detect patterns
-  const weakArea =
-    study < prayer && study < focus
-      ? "study"
-      : prayer < study && prayer < focus
-      ? "prayer"
-      : "focus";
+    const data = await res.json();
 
-  return `
-Out of ${total} days:
-- Study: ${study}
-- Prayer: ${prayer}
-- Focus: ${focus}
-
-Weakest area: ${weakArea}
-
-Instruction:
-Analyze this user deeply and give practical, specific advice to improve consistency.
-`;
-};
-
-  const handleAsk = async () => {
-    try {
-      const summary = generateSummary(days);
-
-      const fullPrompt = `
-User Data:
-${summary}
-
-Question:
-${input}
-`;
-
-      const res = await getAIResponse(fullPrompt);
-      setResponse(res);
-    } catch (err) {
-      console.error(err);
-      setResponse("Something went wrong");
-    }
+    setResponse(data.reply);
+    setLoading(false);
   };
 
+  if (!user) return <div style={{ color: "white" }}>Loading...</div>;
+
   return (
-    <div style={{ padding: "20px", background: "#0f172a", minHeight: "100vh", color: "white" }}>
-      <h2>AI Assistant</h2>
+    <div style={container}>
+      <div style={card}>
+        <h2>🤖 AI Coach</h2>
 
-      <input
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        placeholder="Ask something..."
-        style={{ padding: "10px", width: "100%", marginTop: "10px" }}
-      />
+        <textarea
+          placeholder="Ask for guidance..."
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          style={textarea}
+        />
 
-      <button onClick={handleAsk} style={{ marginTop: "10px" }}>
-        Ask AI
-      </button>
+        <button onClick={askAI} style={btn}>
+          {loading ? "Thinking..." : "Ask"}
+        </button>
 
-      <div style={{ marginTop: "20px" }}>
-        <p>{response}</p>
+        <div style={responseBox}>
+          <p>{response}</p>
+        </div>
       </div>
     </div>
   );
 }
+
+/* STYLES */
+
+const container = {
+  minHeight: "100vh",
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  background: "radial-gradient(circle,#0f172a,#020617)",
+};
+
+const card = {
+  width: "90%",
+  maxWidth: "400px",
+  padding: "20px",
+  borderRadius: "20px",
+  background: "#020617",
+  color: "white",
+};
+
+const textarea = {
+  width: "100%",
+  height: "100px",
+  marginTop: "10px",
+  borderRadius: "10px",
+  padding: "10px",
+};
+
+const btn = {
+  marginTop: "10px",
+  width: "100%",
+  padding: "10px",
+  background: "#22c55e",
+  border: "none",
+  borderRadius: "10px",
+};
+
+const responseBox = {
+  marginTop: "15px",
+  padding: "10px",
+  background: "#1e293b",
+  borderRadius: "10px",
+};
