@@ -15,6 +15,8 @@ import {
 
 export default function Dashboard() {
   const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
   const [days, setDays] = useState([]);
   const [selectedDay, setSelectedDay] = useState(null);
   const [streak, setStreak] = useState(0);
@@ -22,36 +24,43 @@ export default function Dashboard() {
   const [friendEmail, setFriendEmail] = useState("");
   const [friends, setFriends] = useState([]);
 
-  // AUTH
+  // ✅ AUTH (FIXES BLACK SCREEN)
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => setUser(u));
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setLoading(false);
+    });
     return () => unsub();
   }, []);
 
-  // LOAD USER
+  // ✅ LOAD USER DATA
   useEffect(() => {
     if (!user) return;
 
     const load = async () => {
-      const ref = doc(db, "users", user.uid);
-      const snap = await getDoc(ref);
+      try {
+        const ref = doc(db, "users", user.uid);
+        const snap = await getDoc(ref);
 
-      if (snap.exists()) {
-        setDays(snap.data().days || []);
-      } else {
-        const empty = Array.from({ length: 30 }, () => ({
-          study: false,
-          prayer: false,
-          worship: false,
-        }));
-        setDays(empty);
+        if (snap.exists()) {
+          setDays(snap.data().days || []);
+        } else {
+          const empty = Array.from({ length: 30 }, () => ({
+            study: false,
+            prayer: false,
+            worship: false,
+          }));
+          setDays(empty);
+        }
+      } catch (err) {
+        console.log("LOAD ERROR:", err);
       }
     };
 
     load();
   }, [user]);
 
-  // STREAK
+  // ✅ STREAK CALCULATION
   useEffect(() => {
     let count = 0;
     days.forEach((d) => {
@@ -60,22 +69,30 @@ export default function Dashboard() {
     setStreak(count);
   }, [days]);
 
-  // SAVE
+  // ✅ SAVE DATA
   useEffect(() => {
     if (!user) return;
 
-    setDoc(
-      doc(db, "users", user.uid),
-      {
-        email: user.email,
-        days,
-        streak,
-      },
-      { merge: true }
-    );
+    const save = async () => {
+      try {
+        await setDoc(
+          doc(db, "users", user.uid),
+          {
+            email: user.email,
+            days,
+            streak,
+          },
+          { merge: true }
+        );
+      } catch (err) {
+        console.log("SAVE ERROR:", err);
+      }
+    };
+
+    save();
   }, [days, streak]);
 
-  // TOGGLE
+  // ✅ TOGGLE DAY
   const toggle = (type) => {
     if (selectedDay === null) return;
 
@@ -84,35 +101,42 @@ export default function Dashboard() {
     setDays(updated);
   };
 
-  // ADD FRIEND (EMAIL)
+  // ✅ ADD FRIEND (EMAIL BASED)
   const addFriend = async () => {
-    const q = query(
-      collection(db, "users"),
-      where("email", "==", friendEmail)
-    );
+    if (!friendEmail) return;
 
-    const snap = await getDocs(q);
+    try {
+      const q = query(
+        collection(db, "users"),
+        where("email", "==", friendEmail)
+      );
 
-    if (snap.empty) {
-      alert("User not found");
-      return;
+      const snap = await getDocs(q);
+
+      if (snap.empty) {
+        alert("User not found");
+        return;
+      }
+
+      const friendId = snap.docs[0].id;
+
+      await updateDoc(doc(db, "users", user.uid), {
+        friends: arrayUnion(friendId),
+      });
+
+      alert("Friend added!");
+      setFriendEmail("");
+      loadFriends(); // refresh
+    } catch (err) {
+      console.log("ADD FRIEND ERROR:", err);
     }
-
-    const friendId = snap.docs[0].id;
-
-    await updateDoc(doc(db, "users", user.uid), {
-      friends: arrayUnion(friendId),
-    });
-
-    alert("Friend added!");
-    setFriendEmail("");
   };
 
-  // LOAD FRIENDS
-  useEffect(() => {
+  // ✅ LOAD FRIENDS
+  const loadFriends = async () => {
     if (!user) return;
 
-    const loadFriends = async () => {
+    try {
       const snap = await getDoc(doc(db, "users", user.uid));
       const ids = snap.data()?.friends || [];
 
@@ -124,20 +148,31 @@ export default function Dashboard() {
       }
 
       setFriends(list);
-    };
+    } catch (err) {
+      console.log("FRIENDS ERROR:", err);
+    }
+  };
 
-    loadFriends();
+  useEffect(() => {
+    if (user) loadFriends();
   }, [user]);
 
-  if (!user) return <p style={{ color: "white" }}>Loading...</p>;
+  // ✅ SAFETY (NO MORE BLACK SCREEN)
+  if (loading) {
+    return <p style={{ color: "white", textAlign: "center" }}>Loading...</p>;
+  }
+
+  if (!user) {
+    return <p style={{ color: "white", textAlign: "center" }}>Not logged in</p>;
+  }
 
   return (
     <div style={container}>
       <div style={card}>
         <h2>Ascension</h2>
-        <p>{user.email}</p>
+        <p style={{ opacity: 0.6 }}>{user.email}</p>
 
-        {/* GRID */}
+        {/* DAYS GRID */}
         <div style={grid}>
           {days.map((d, i) => {
             const total =
@@ -158,7 +193,12 @@ export default function Dashboard() {
               <div
                 key={i}
                 onClick={() => setSelectedDay(i)}
-                style={{ ...day, background: color }}
+                style={{
+                  ...day,
+                  background: color,
+                  transform:
+                    selectedDay === i ? "scale(1.1)" : "scale(1)",
+                }}
               >
                 {i + 1}
               </div>
@@ -166,52 +206,82 @@ export default function Dashboard() {
           })}
         </div>
 
-        <div style={streak}>🔥 {streak} Day Streak</div>
+        {/* STREAK */}
+        <div style={streakBox}>🔥 {streak} Day Streak</div>
 
         {/* UPDATE */}
         <div style={box}>
           <h4>Update Day</h4>
+
           {selectedDay === null ? (
             <p>Select a day</p>
           ) : (
             <>
-              <button onClick={() => toggle("study")}>📖 Word</button>
-              <button onClick={() => toggle("prayer")}>🙏 Prayer</button>
-              <button onClick={() => toggle("worship")}>🙌 Worship</button>
+              <button style={btn("#3b82f6")} onClick={() => toggle("study")}>
+                📖 Word
+              </button>
+
+              <button style={btn("#a855f7")} onClick={() => toggle("prayer")}>
+                🙏 Prayer
+              </button>
+
+              <button style={btn("#22c55e")} onClick={() => toggle("worship")}>
+                🙌 Worship
+              </button>
             </>
           )}
         </div>
 
-        {/* FRIENDS */}
+        {/* ADD FRIEND */}
         <div style={box}>
           <h4>Add Friend</h4>
+
           <input
-            placeholder="email"
+            placeholder="Enter email"
             value={friendEmail}
             onChange={(e) => setFriendEmail(e.target.value)}
+            style={input}
           />
-          <button onClick={addFriend}>Add</button>
+
+          <button style={btn("#2563eb")} onClick={addFriend}>
+            Add Friend
+          </button>
         </div>
 
+        {/* FRIEND LIST */}
         <div style={box}>
           <h4>Friends</h4>
-          {friends.map((f) => (
-            <p key={f.id}>
-              {f.email} — 🔥 {f.streak || 0}
-            </p>
-          ))}
+
+          {friends.length === 0 ? (
+            <p>No friends yet</p>
+          ) : (
+            friends.map((f) => (
+              <p key={f.id}>
+                {f.email} — 🔥 {f.streak || 0}
+              </p>
+            ))
+          )}
         </div>
 
         {/* NAV */}
-        <button onClick={() => (window.location.href = "/chat")}>
-          Global Chat
+        <button
+          style={btn("#2563eb")}
+          onClick={() => (window.location.href = "/chat")}
+        >
+          Global Chat 💬
         </button>
 
-        <button onClick={() => (window.location.href = "/ai")}>
-          AI Coach
+        <button
+          style={btn("#22c55e")}
+          onClick={() => (window.location.href = "/ai")}
+        >
+          AI Coach 🤖
         </button>
 
-        <button onClick={() => signOut(auth)}>Logout</button>
+        {/* LOGOUT */}
+        <button style={logout} onClick={() => signOut(auth)}>
+          Logout
+        </button>
       </div>
     </div>
   );
@@ -229,7 +299,7 @@ const container = {
 
 const card = {
   width: "90%",
-  maxWidth: "400px",
+  maxWidth: "420px",
   padding: "20px",
   borderRadius: "20px",
   background: "#020617",
@@ -244,14 +314,15 @@ const grid = {
 };
 
 const day = {
-  height: "40px",
+  height: "42px",
   borderRadius: "8px",
   display: "flex",
   justifyContent: "center",
   alignItems: "center",
+  cursor: "pointer",
 };
 
-const streak = {
+const streakBox = {
   marginTop: "10px",
   padding: "10px",
   background: "#22c55e",
@@ -259,8 +330,31 @@ const streak = {
 };
 
 const box = {
-  marginTop: "10px",
-  padding: "10px",
+  marginTop: "12px",
+  padding: "12px",
   background: "#1e293b",
   borderRadius: "10px",
+};
+
+const input = {
+  width: "100%",
+  padding: "8px",
+  marginBottom: "8px",
+  borderRadius: "8px",
+};
+
+const btn = (color) => ({
+  width: "100%",
+  padding: "10px",
+  marginTop: "6px",
+  borderRadius: "10px",
+  border: "none",
+  background: color,
+  color: "white",
+});
+
+const logout = {
+  marginTop: "15px",
+  padding: "10px",
+  width: "100%",
 };
