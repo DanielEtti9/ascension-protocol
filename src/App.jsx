@@ -1,116 +1,100 @@
-import { useState, useEffect } from "react";
-import { auth } from "../services/firebase";
-import { onAuthStateChanged } from "firebase/auth";
+import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 
-export default function AI() {
-  const [user, setUser] = useState(null);
-  const [input, setInput] = useState("");
-  const [response, setResponse] = useState("");
-  const [loading, setLoading] = useState(false);
+import Login from "./pages/Login";
+import Dashboard from "./pages/Dashboard";
+import Chat from "./pages/Chat";
+import AI from "./pages/AI";
 
-  const [stats, setStats] = useState({
-    streak: 0,
-    study: 0,
-    prayer: 0,
-    worship: 0,
-  });
-
-  useEffect(() => {
-    onAuthStateChanged(auth, (u) => {
-      setUser(u);
-
-      if (u) {
-        const saved = localStorage.getItem("stats");
-        if (saved) setStats(JSON.parse(saved));
-      }
-    });
-  }, []);
-
-  const askAI = async () => {
-    setLoading(true);
-
-    const res = await fetch("/api/ai", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        message: input,
-        stats,
-      }),
-    });
-
-    const data = await res.json();
-
-    setResponse(data.reply);
-    setLoading(false);
-  };
-
-  if (!user) return <div style={{ color: "white" }}>Loading...</div>;
+function Layout({ children }) {
+  const navigate = useNavigate();
 
   return (
-    <div style={container}>
-      <div style={card}>
-        <h2>🤖 AI Coach</h2>
+    <div style={appContainer}>
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        style={{ paddingBottom: "80px" }}
+      >
+        {children}
+      </motion.div>
 
-        <textarea
-          placeholder="Ask for guidance..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          style={textarea}
-        />
-
-        <button onClick={askAI} style={btn}>
-          {loading ? "Thinking..." : "Ask"}
-        </button>
-
-        <div style={responseBox}>
-          <p>{response}</p>
-        </div>
+      {/* BOTTOM NAV */}
+      <div style={nav}>
+        <button onClick={() => navigate("/dashboard")} style={navBtn}>🏠</button>
+        <button onClick={() => navigate("/chat")} style={navBtn}>💬</button>
+        <button onClick={() => navigate("/ai")} style={navBtn}>🤖</button>
       </div>
     </div>
   );
 }
 
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Login />} />
+
+        <Route
+          path="/dashboard"
+          element={
+            <Layout>
+              <Dashboard />
+            </Layout>
+          }
+        />
+
+        <Route
+          path="/chat"
+          element={
+            <Layout>
+              <Chat />
+            </Layout>
+          }
+        />
+
+        <Route
+          path="/ai"
+          element={
+            <Layout>
+              <AI />
+            </Layout>
+          }
+        />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+
+export default App;
+
 /* STYLES */
 
-const container = {
+const appContainer = {
   minHeight: "100vh",
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  background: "radial-gradient(circle,#0f172a,#020617)",
+  background: "radial-gradient(circle at top,#0f172a,#020617)",
 };
 
-const card = {
+const nav = {
+  position: "fixed",
+  bottom: "20px",
+  left: "50%",
+  transform: "translateX(-50%)",
   width: "90%",
   maxWidth: "400px",
-  padding: "20px",
+  display: "flex",
+  justifyContent: "space-around",
+  padding: "12px",
   borderRadius: "20px",
-  background: "#020617",
-  color: "white",
+  backdropFilter: "blur(20px)",
+  background: "rgba(255,255,255,0.08)",
+  boxShadow: "0 0 20px rgba(0,0,0,0.4)",
 };
 
-const textarea = {
-  width: "100%",
-  height: "100px",
-  marginTop: "10px",
-  borderRadius: "10px",
-  padding: "10px",
-};
-
-const btn = {
-  marginTop: "10px",
-  width: "100%",
-  padding: "10px",
-  background: "#22c55e",
+const navBtn = {
+  fontSize: "20px",
+  background: "none",
   border: "none",
-  borderRadius: "10px",
-};
-
-const responseBox = {
-  marginTop: "15px",
-  padding: "10px",
-  background: "#1e293b",
-  borderRadius: "10px",
+  color: "white",
 };
